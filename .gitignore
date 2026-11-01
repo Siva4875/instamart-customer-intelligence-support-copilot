@@ -1,0 +1,49 @@
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local database
+data/instamart.db
+
+# Temporary files and logs
+*.log
+*.tmp
+*.bak
+
+# Agent runtime checkpoints
+state/*.json
+
+# Temporary test databases
+outputs/*.db
+
+# Temporary test artifacts
+outputs/duplicate_test.db
+
+# Python test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
