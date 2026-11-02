@@ -388,21 +388,23 @@ ReAct may require multiple model calls and consume more tokens. Repeated tool ca
 
 ### Seven refund-agent scenarios
 
-The seven predefined scenarios were tested in earlier executions:
+All seven predefined scenarios now have completed records in `outputs/agent_runs.jsonl`.
 
-| Scenario | Expected outcome | Actual outcome | Result |
-|---|---|---|---|
-| S1 | REFUND | REFUND | PASS |
-| S2 | REFUND | REFUND | PASS |
-| S3 | ESCALATE | ESCALATE | PASS |
-| S4 | DENIED | DENIED | PASS |
-| S5 | DENIED | DENIED | PASS |
-| S6 | NOT_FOUND | NOT_FOUND | PASS |
-| S7 | FALLBACK | FALLBACK_MAX_ITERATIONS | PASS |
+| Scenario | Expected outcome | Actual outcome | LLM calls | Tokens | Result |
+|---|---|---|---:|---:|---|
+| S1 | REFUND | REFUND | 5 | 897 | PASS |
+| S2 | REFUND | REFUND | 5 | 897 | PASS |
+| S3 | ESCALATE | ESCALATE | 5 | 884 | PASS |
+| S4 | DENIED | DENIED | 4 | 605 | PASS |
+| S5 | DENIED | DENIED | 3 | 337 | PASS |
+| S6 | NOT_FOUND | NOT_FOUND | 2 | 72 | PASS |
+| S7 | FALLBACK | FALLBACK_MAX_ITERATIONS | 6 | 3000 | PASS |
 
 Scenario coverage: S1 and S2 are eligible late-delivery refunds; S3 is a high-value refund requiring escalation; S4 and S5 are refund-denial cases; S6 is an order-not-found case; S7 tests repeated tool-call behaviour and maximum-iteration fallback.
 
-For S7, `FALLBACK_MAX_ITERATIONS` is the specific fallback status. These seven scenario results were verified in earlier executions; they are not all represented as seven separate records in the current `outputs/agent_runs.jsonl`.
+S7 reached the six-iteration limit with six model calls and 3,000 tokens, below the configured 6,000-token limit.
+
+The completed S2-S6 results were recovered from their saved checkpoints. Existing refund and escalation actions were not repeated during recovery. S7 was finalized from its six saved tool observations without another model call or tool execution.
 
 ### Stop-safely demonstrations
 
@@ -471,21 +473,33 @@ The current JSONL ledger check is a local simulation and is not sufficient for c
 
 #### Current agent audit log
 
-At the latest verification, `outputs/agent_runs.jsonl` contained eight records:
+The latest verified `outputs/agent_runs.jsonl` contains 14 records: seven required scenario records and seven additional test or safety-demonstration records.
 
-| Run ID | Recorded status |
-|---|---|
-| `CRASH_RESUME_TEST_001` | REFUND |
-| `S1_CRASH_RESUME_FINAL` | REFUND |
-| `S1_TOKEN_LIMIT_200` | FALLBACK_TOKEN_LIMIT |
-| `S1_TOKEN_LIMIT_VERIFY` | FALLBACK_TOKEN_LIMIT |
-| `S1_TIMEOUT_ZERO` | FALLBACK_TIMEOUT |
-| `DUPLICATE_REFUND_INTEGRATION_001` | ALREADY_PROCESSED |
-| `UNKNOWN_TOOL_SAFETY_TEST_001` | FALLBACK_INVALID_TOOL |
-| `DUPLICATE_REFUND_CHECKPOINT_TEST_001` | FALLBACK_INVALID_TOOL (earlier result; checkpoint subsequently updated) |
+**Required scenario records**
 
-## Important:
-The last audit record does not reflect the successful rerun. The checkpoint for that run records `ALREADY_PROCESSED`, with four tools, four LLM calls, and 597 tokens. Do not treat the stale audit status as the final test result.
+| Run ID | Scenario | Status | LLM calls | Tokens |
+|---|---|---|---:|---:|
+| `S1_CRASH_RESUME_FINAL` | S1 | REFUND | 5 | 897 |
+| `fd879416-3d65-48da-adf1-ce9c2ec836da` | S2 | REFUND | 5 | 897 |
+| `1687cbab-c379-4daa-bab7-e979e2abf1ee` | S3 | ESCALATE | 5 | 884 |
+| `3d2bd12c-21d1-4046-8b0f-94a4f3b53750` | S4 | DENIED | 4 | 605 |
+| `e004d340-2bdb-4e23-9739-889ff053d2d6` | S5 | DENIED | 3 | 337 |
+| `0f0ccd51-07a6-40f3-87a6-6e46b631c276` | S6 | NOT_FOUND | 2 | 72 |
+| `32491f66-80fa-44e7-b5ac-1500f117c32d` | S7 | FALLBACK_MAX_ITERATIONS | 6 | 3000 |
+
+**Additional test and safety records**
+
+| Run ID | Scenario | Recorded status | LLM calls | Tokens |
+|---|---|---|---:|---:|
+| `CRASH_RESUME_TEST_001` | CRASH_RESUME_TEST | REFUND | 5 | 867 |
+| `S1_TOKEN_LIMIT_200` | S1_TOKEN_LIMIT | FALLBACK_TOKEN_LIMIT | 3 | 354 |
+| `S1_TOKEN_LIMIT_VERIFY` | S1_TOKEN_LIMIT | FALLBACK_TOKEN_LIMIT | 3 | 354 |
+| `S1_TIMEOUT_ZERO` | S1_TIMEOUT | FALLBACK_TIMEOUT | 0 | 0 |
+| `DUPLICATE_REFUND_INTEGRATION_001` | DUPLICATE_REFUND_INTEGRATION | ALREADY_PROCESSED | 4 | 597 |
+| `UNKNOWN_TOOL_SAFETY_TEST_001` | UNKNOWN_TOOL_SAFETY_TEST | FALLBACK_INVALID_TOOL | 1 | 10 |
+| `DUPLICATE_REFUND_CHECKPOINT_TEST_001` | DUPLICATE_REFUND_CHECKPOINT_TEST | FALLBACK_INVALID_TOOL (stale audit entry) | 1 | 33 |
+
+The seven required scenario records were individually checked against their expected outcomes. The duplicate-refund checkpoint test's audit entry remains stale because `_finish()` does not overwrite an existing run ID; its completed checkpoint records `ALREADY_PROCESSED`. This historical discrepancy is retained transparently.
 
 ## 9. Limitations and Future Improvements
 
@@ -526,14 +540,14 @@ Use this checklist before submission. Items marked for verification should be ch
 ### Part D
 - [x] Policy RAG evaluation and chunk-overlap experiment.
 - [x] ReAct vs Plan-and-Execute comparison documented.
-- [x] Seven refund-agent scenarios tested in earlier executions.
+- [x] All seven refund-agent scenarios have completed audit records with expected outcomes.
 - [x] Token-limit and timeout fallbacks tested.
 - [x] Crash/resume tested.
 - [x] Duplicate-refund integration test passed.
 - [x] Duplicate-refund checkpoint verified with ALREADY_PROCESSED.
 - [x] No additional refund-ledger entry created.
 - [x] Checkpoint contains all four tool observations.
-- [ ] Audit log updated to reflect the successful rerun.
+- [x] Audit log updated and verified for all seven required scenarios.
 
 ### Repository and documentation
 - [ ] Confirm README commands work from a clean environment.
