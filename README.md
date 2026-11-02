@@ -255,64 +255,148 @@ Verify and document these additional checks if required by the grading rubric:
 
 These are final verification items, not claimed completed results.
 
-## 7. Part C — Support Ticket Triage and Privacy Guardrails
+## 7. Part C - Support Ticket Triage and Privacy Guardrails
 
-### Implemented
+### Implementation Summary
 
-- PII redaction for email addresses, phone numbers, and order IDs.
-- Classification into billing, delivery, technical, and fraud.
-- Retry handling for simulated transient errors.
-- JSON response validation and category allow-listing.
-- Keyword fallback when exactly one allowed category is detectable.
-- Priority-based routing.
-- Empty and overlong ticket guardrails.
-- Token-budget enforcement and human-review fallback.
+Part C implements a privacy-aware support ticket triage pipeline in `src/triage.py`. The pipeline processes all 164 tickets while preserving their original input order.
 
-### Privacy and validation behaviour
+### 1. Input Guardrails
 
-Email addresses are replaced with `[EMAIL]`, phone numbers with `[PHONE]`, and order IDs with `[ORDER_ID]`. Empty and overlong tickets are skipped or flagged before model calls. Invalid or ambiguous outputs are routed to human review. Retries use exponential delay with jitter for simulated transient failures. JSON category values are allow-listed.
+- Empty or whitespace-only tickets are marked `skipped_empty`.
+- Tickets with an estimated token count above 400 are marked `flagged_long`.
+- Four empty tickets and four long tickets were identified.
+- The four long tickets had an estimated length of 734 tokens.
+- These tickets are excluded from model calls.
 
-Fraud tickets are routed to the security team with high priority. Premium-customer tickets are routed to the premium desk with high priority. Guardrail, invalid-output, and budget cases are routed for human review. Remaining tickets are routed to the support queue.
+### 2. Personal Information Redaction
 
-### Normal triage execution
+Personal information is redacted before ticket content is sent to the model. The patterns are applied in the required order:
 
-| Status | Tickets |
+1. Email addresses -> `[EMAIL]`
+2. Phone numbers -> `[PHONE]`
+3. Order IDs -> `[ORDER_ID]`
+
+| Redaction type | Replacements |
 |---|---:|
-| Classified JSON | 135 |
-| Classified keyword | 12 |
-| Invalid output flagged | 9 |
-| Empty tickets skipped | 4 |
-| Long tickets flagged | 4 |
-| Total | 164 |
+| Email addresses | 55 |
+| Phone numbers | 91 |
+| Order IDs | 132 |
+| **Total** | **278** |
 
-### Routing results
+The pipeline verifies that no matching personal information remains and that the message content supplied for classification is exactly the redacted ticket text.
 
-| Destination | Tickets |
+### 3. Classification Prompts
+
+Two system prompts are implemented:
+
+- **Zero-shot:** Defines the `CLASSIFY` task, the four permitted categories (`billing`, `delivery`, `technical`, and `fraud`), and the required JSON-only response format.
+- **Few-shot:** Includes the same classification rules and an `EXAMPLES:` section with labelled examples, including a fraud example.
+
+The expected response format is:
+
+`{"category":"...","reason":"..."}`
+
+### 4. Retry Handling
+
+Every model call is protected by retry handling:
+
+- Maximum of three retries.
+- Base delay: 0.05 seconds.
+- Exponential backoff with jitter: `BASE_DELAY * 2**n * random.uniform(0.9, 1.15)`.
+- Each retry is logged with the ticket ID, retry number, and wait duration.
+- `mock_llm.reset()` is called immediately before each complete pipeline run.
+
+Each full run encountered 19 transient failures, and all were recovered through retries. The observed retry waits were approximately 0.0453 to 0.0562 seconds.
+
+### 5. Model Output Validation
+
+Model responses are validated using the permitted categories:
+
+| Final status | Ticket count |
 |---|---:|
-| Support queue | 102 |
-| Security team | 34 |
-| Premium desk | 11 |
-| Human review | 17 |
-| Total | 164 |
+| `classified_json` | 135 |
+| `classified_keyword` | 12 |
+| `flagged_invalid_output` | 9 |
 
-The run recorded 12,520 tokens. There were 278 PII substitutions: 55 email, 91 phone, and 132 order-ID redactions. Nineteen retry events were recorded.
+Valid JSON is accepted only when its category is permitted. If JSON parsing fails, the fallback checks the response for exactly one occurrence of an allowed category word. Unsupported categories, multiple category words, and responses without a valid category are flagged for human review rather than guessed.
 
-### Zero-shot and few-shot comparison
+### 6. Zero-shot vs Few-shot Comparison
 
-The zero-shot evaluation classified 147 tickets, with 126 correct predictions (approximately 85.7% accuracy). Prominent error patterns were fraud classified as billing (11 cases) and technical classified as billing (10 cases).
+Both comparison runs processed the same 164 tickets without a token budget.
 
-The few-shot evaluation achieved 100% accuracy on the evaluated labelled set in the recorded experiment. These results are specific to the synthetic dataset and offline mock implementation; they should not be interpreted as expected real-world LLM performance.
+| Metric | Zero-shot | Few-shot |
+|---|---:|---:|
+| Classified tickets | 147 | 147 |
+| Correct classifications | 126 | 147 |
+| Accuracy | 85.7% | 100.0% |
+| Total tokens | 9,088 | 18,916 |
+| Tokens per classified ticket | 61.82 | 128.68 |
 
-### Token-budget demonstration — final verification required
+**Zero-shot confusion table**
 
-An earlier demonstration used a 1,000-token budget and recorded 1,035 tokens. That run is historical evidence, but it is not the final required zero-shot budget demonstration.
+Rows represent the actual category; columns represent the predicted category.
 
-The final capstone check is to run the zero-shot pipeline with a configured budget of 6,000 tokens (or a lower justified budget if the evaluation requirements specify it), verify that the budget check occurs before each model call, and record the resulting `outputs/triage_budget_demo.csv` metrics. Do not describe the earlier 1,000-token run as satisfying this final requirement.
+| Actual category | Billing | Delivery | Fraud | Technical |
+|---|---:|---:|---:|---:|
+| Billing | 38 | 0 | 0 | 0 |
+| Delivery | 0 | 36 | 0 | 0 |
+| Fraud | 11 | 0 | 23 | 0 |
+| Technical | 10 | 0 | 0 | 29 |
 
-### Generated outputs
+**Cost-benefit analysis:** Few-shot classification used 9,828 additional tokens across 147 classified tickets, approximately 66.86 additional tokens per classified ticket. However, it improved accuracy from 85.7% to 100%, correcting 21 classifications. The zero-shot errors included 11 fraud tickets and 10 technical tickets incorrectly classified as billing. The additional token cost is justified when classification accuracy and correct routing are important. These results are specific to the synthetic dataset and offline mock implementation; they should not be interpreted as expected real-world LLM performance.
 
-- `outputs/triage_results.csv`
-- `outputs/triage_budget_demo.csv` (exists; final compliant zero-shot budget run still needs verification)
+### 7. Token Budget and Ticket Routing
+
+**Zero-shot budget demonstration**
+
+- Token budget: 6,000.
+- Actual usage: 6,018 tokens.
+- Classified tickets: 97.
+- Budget-exhausted tickets: 53.
+- Status counts: 90 `classified_json`, 7 `classified_keyword`, 6 `flagged_invalid_output`, 4 `skipped_empty`, and 4 `flagged_long`.
+
+The budget is checked before each model call. A call already started can take the total usage above the budget; subsequent calls are stopped when the running usage reaches or exceeds the limit.
+
+**Final few-shot run**
+
+- Token budget: 100,000.
+- Total tickets: 164.
+- Classified tickets: 147.
+- Accuracy: 100%.
+- Total tokens: 18,916.
+- Budget-exhausted tickets: 0.
+
+Final routing rules:
+
+| Condition | Route | Priority |
+|---|---|---|
+| `skipped_empty`, `flagged_long`, `flagged_invalid_output`, or `budget_exhausted` | `human_review` | NORMAL |
+| Classified category is `fraud` | `security_team` | HIGH |
+| Customer is premium | `premium_desk` | HIGH |
+| All other classified tickets | `support_queue` | NORMAL |
+
+A missing customer segment is treated as non-premium.
+
+**Final routing counts**
+
+| Route | Tickets |
+|---|---:|
+| `support_queue` | 102 |
+| `security_team` | 34 |
+| `premium_desk` | 11 |
+| `human_review` | 17 |
+
+The final CSV contains the required columns: `ticket_id`, `customer_id`, `status`, `category`, `segment_name`, `priority`, `route`, and `tokens_used`. Tickets without a classification have a blank category and segment where applicable.
+
+Routing was independently checked against the customer segment data. The validation reported zero routing mismatches, preserved the original input order, and confirmed that missing customer segments are treated as non-premium.
+
+### Generated Outputs
+
+- `outputs/triage_budget_demo.csv` - zero-shot token-budget demonstration.
+- `outputs/triage_results.csv` - final few-shot classification and routing results.
+
+Both output files contain 164 ticket rows.
 
 ## 8. Part D — Policy RAG Assistant and Refund Agent
 
