@@ -18,29 +18,72 @@ All generated records are synthetic. The project uses an offline mock LLM and lo
 
 ## 2. Requirements and Setup
 
-Python 3.11 or higher is recommended. SQLite 3.25 or higher is recommended. Install the packages listed in `requirements.txt` (including pandas, NumPy, scikit-learn, and joblib).
+Python 3.11 or higher is recommended. SQLite 3.25 or higher is recommended. Install the pinned packages listed in `requirements.txt`, including pandas, NumPy, scikit-learn, and joblib.
+
+### Reproduce the project from a clean clone
+
+Run these steps from a terminal. The commands below use Windows PowerShell; equivalent macOS/Linux activation commands follow.
+
+1. Clone the repository and enter the project directory.
+2. Create and activate an isolated virtual environment.
+3. Install the dependencies from `requirements.txt`.
+4. Generate the deterministic synthetic raw data and policy files.
+5. Run the Part A data pipeline and confirm its validation message.
+6. Run the complete project pipeline.
 
 ### Windows PowerShell
 
 ```powershell
+git clone https://github.com/Siva4875/instamart-customer-intelligence-support-copilot.git
+cd instamart-customer-intelligence-support-copilot
+
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+
 python generate_data.py
+python -m src.data_pipeline
 python run_project.py
 ```
 
 ### macOS / Linux
 
 ```bash
-python -m venv .venv
+git clone https://github.com/Siva4875/instamart-customer-intelligence-support-copilot.git
+cd instamart-customer-intelligence-support-copilot
+
+python3 -m venv .venv
 source .venv/bin/activate
+
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+
 python generate_data.py
+python -m src.data_pipeline
 python run_project.py
 ```
+
+The Part A pipeline should finish by printing:
+
+```text
+ALL CHECKPOINTS PASSED
+```
+
+`generate_data.py` creates the deterministic synthetic files under `data/raw/` and the policy text files under `data/policies/`. The Part A pipeline creates the cleaned CSVs under `data/clean/` and the SQLite database at `data/instamart.db`. The current cleaned CSV filenames are `customers.csv`, `products.csv`, and `orders.csv`.
+
+### Refreshing requirements.txt
+
+The committed `requirements.txt` contains pinned package versions. To regenerate it from the active environment, run:
+
+```powershell
+python -m pip freeze > requirements.txt
+```
+
+Before committing a regenerated file, review its entries. A package installed from a local wheel may appear as a machine-specific `package @ file:///...` reference; replace that with a portable version pin such as `package==version` when appropriate. The committed file uses portable version pins.
+
+### Notebook workflow
 
 Open `notebooks/Customer_Intelligence_Support_Copilot.ipynb` and run cells from top to bottom for the notebook workflow. The notebook calls the same modules used by the scripts.
 
@@ -87,34 +130,101 @@ Recommended workflow:
 
 ### Implemented
 
-- Raw CSV data auditing.
-- Duplicate removal and data cleaning.
-- Customer, product, and order data validation.
-- Clean CSV generation.
-- SQLite database creation.
-- Seven SQL queries.
-- Pandas cross-checks and exploratory data analysis (EDA).
+- Audited the raw customer, product, and order CSV files.
+- Reported each raw table's shape, data types, and per-column missing counts and percentages. Blank and whitespace-only strings are counted as missing.
+- Removed exact duplicate rows and resolved duplicate order IDs.
+- Standardized customer city and gender values and imputed missing customer ages.
+- Recalculated missing order amounts and imputed delivery duration only for completed orders.
+- Wrote cleaned CSV files and loaded the same tables into SQLite.
+- Implemented eight data assertions and a SQLite table-existence check.
+- Executed seven SQL queries and cross-checked the results with pandas.
+- Completed descriptive statistics, outlier checks, and correlation analysis.
 
-### Cleaning methodology
+### Raw-data audit
 
-The pipeline standardizes city and gender values, treats invalid ages as missing, resolves duplicate orders by keeping the latest timestamp, imputes missing amounts from catalogue price, sets negative delivery times to missing, and imputes missing delivery durations only for completed orders using product category. Cancelled orders are not assigned invented delivery durations.
+The audit loaded the three Part A source tables with `keep_default_na=False` so blank strings could be counted explicitly.
 
-### Raw-data audit observations
+| Raw table | Shape | Data-type summary |
+|---|---:|---|
+| `customers.csv` | 1,200 × 5 | String/object fields |
+| `products.csv` | 40 × 4 | String/object fields and integer catalogue price |
+| `orders.csv` | 13,084 × 9 | Mostly string/object fields; `quantity` and `discount_pct` are integers |
+
+The audit reports a missing count and missing percentage for every column. The non-zero missing values were:
+
+| Raw table | Column | Missing / blank count | Missing percentage |
+|---|---|---:|---:|
+| Customers | `age` | 61 | 5.08% |
+| Customers | `gender` | 30 | 2.50% |
+| Orders | `delivery_minutes` | 2,541 | 19.42% |
+
+All other raw columns had zero missing or blank values. The product table had no missing values.
+
+Additional raw-data quality observations:
 
 | Check | Result |
 |---|---:|
-| Raw customers | 1,200 |
-| Raw products | 40 |
-| Raw orders | 13,084 |
-| Exact duplicate orders | 119 |
-| Pending orders | 656 |
-| Invalid order amounts | 120 |
+| Raw order rows | 13,084 |
+| Distinct raw `order_id` values | 12,309 |
+| Exact duplicate order rows | 119 |
+| Pending order rows | 656 |
+| Invalid/non-numeric order amounts | 120 |
 | Negative delivery durations | 106 |
 | Blank delivery durations | 2,541 |
+| Blank customer ages | 61 |
+| Customer ages outside 10–100 | 6 |
+| Distinct raw city spellings | 24 |
+| Distinct non-blank raw gender spellings | 10 |
+| Blank customer genders | 30 |
 
-Additional audit observations: 61 customer ages were blank and 6 were outside the 10–100 range before cleaning. City and gender values contained inconsistent spellings; there were 24 city spellings and 10 gender spellings, plus 30 blank gender values.
+`src/triage.py` separately loads `data/raw/tickets.csv` with `keep_default_na=False` and explicit string dtypes for its five ticket columns. This preserves empty ticket text and other blank ticket fields for the Part C input guardrails.
 
-After cleaning, the customer data contained six standardized cities. Gender counts were Female 610, Male 560, Unknown 30. Customer ages had no missing values and ranged from 18 to 60.
+### Cleaning methodology and affected-row counts
+
+**Customers**
+
+1. Trimmed city strings and applied title case, reducing 24 raw city spellings to six standardized cities.
+2. Trimmed and lowercased gender values. `male`/`m` map to `male`, `female`/`f` map to `female`, and blank or unrecognized values map to `unknown`.
+3. Converted age to numeric. Blank values and ages outside 10–100 were set to missing.
+4. Filled all 67 missing/invalid ages (61 blank and 6 outside the allowed raw range) using the median age for the corresponding city. Imputed ages were rounded to integers.
+5. Converted `signup_date` to `YYYY-MM-DD` text.
+
+Final customer distribution:
+
+| City | Customers |
+|---|---:|
+| Bengaluru | 197 |
+| Chennai | 191 |
+| Delhi | 210 |
+| Hyderabad | 191 |
+| Mumbai | 184 |
+| Pune | 227 |
+| **Total** | **1,200** |
+
+| Gender | Customers |
+|---|---:|
+| female | 610 |
+| male | 560 |
+| unknown | 30 |
+| **Total** | **1,200** |
+
+After cleaning, customer ages had zero missing values and ranged from 18 to 60.
+
+**Orders**
+
+1. Parsed `order_ts` as a datetime.
+2. Removed 119 exact duplicate rows.
+3. Sorted by `order_id` and timestamp, then retained the latest timestamp for each order ID. This removed a further 656 rows and left 12,309 unique orders.
+4. Converted `quantity`, `discount_pct`, `order_amount`, and `delivery_minutes` to numeric values. Missing discount percentages were treated as zero.
+5. Set negative delivery durations to missing. There were 106 in the raw audit and 105 remaining after deduplication.
+6. Recalculated the 112 order amounts still missing after deduplication using the catalogue price, quantity, and discount:
+
+   `order_amount = price_inr * quantity * (1 - discount_pct / 100)`
+
+   Recalculated amounts were rounded to two decimal places. The raw audit found 120 invalid amounts before duplicate removal.
+7. Imputed the 774 missing delivery durations among completed orders using the median delivery duration for the corresponding product category. Imputed durations were rounded to integers.
+8. Did not impute cancelled-order delivery durations. All 1,199 cancelled orders retained missing delivery durations.
+9. Stored `order_ts` as text in `YYYY-MM-DD HH:MM:SS` format.
 
 ### Clean order results
 
@@ -129,33 +239,125 @@ After cleaning, the customer data contained six standardized cities. Gender coun
 | Orders with missing amount | 0 |
 | Completed-order revenue | INR 2,998,668.80 |
 
-### SQL query result counts
+### Clean files and SQLite database
 
-| Query | Rows returned |
+The pipeline writes these files:
+
+- `data/clean/customers.csv`
+- `data/clean/products.csv`
+- `data/clean/orders.csv`
+- `data/instamart.db`
+
+The SQLite database contains the `customers`, `products`, and `orders` tables. The CSV filenames are `customers.csv`, `products.csv`, and `orders.csv` (without a `_clean` suffix).
+
+The validation function contains eight data assertions:
+
+1. Exactly six standardized customer cities.
+2. Gender values are limited to `male`, `female`, and `unknown`.
+3. Customer ages are populated and between 18 and 60.
+4. Order IDs are unique.
+5. No pending orders remain.
+6. Every order has a numeric order amount.
+7. Every completed order has a delivery duration.
+8. Every cancelled order has a missing delivery duration.
+
+It also checks that the SQLite database contains all three required tables. A successful run prints exactly `ALL CHECKPOINTS PASSED`.
+
+### SQL query results
+
+All seven queries in `sql/queries.sql` were executed using `pandas.read_sql_query` against the SQLite database.
+
+| Query | Purpose | Rows returned |
+|---|---|---:|
+| Q1 | Completed orders above INR 500, grouped by customer, retaining customers whose qualifying spend exceeds INR 8,000 | 30 |
+| Q2 | Completed-order revenue grouped by customer city and product category | 30 |
+| Q3 | Products priced above the average catalogue price | 11 |
+| Q4 | Customers with no completed orders, using a left join | 25 |
+| Q5 | Customers whose completed-order spend is above the average customer spend | 550 |
+| Q6 | Customer spend rankings within each city using `RANK()`, `DENSE_RANK()`, and `ROW_NUMBER()` | 1,175 |
+| Q7 | Daily completed-order revenue and cumulative running revenue | 183 |
+
+Selected SQL validation results:
+
+- Q2 completed-order revenue grand total: **INR 2,998,668.80**.
+- Q2 Bengaluru / Electronics revenue: **INR 233,909.45**.
+- Q5 average customer-spend threshold: **INR 2,552.06**.
+- Q6 top customer examples by city: Bengaluru C0082 — INR 12,856.20; Chennai C0930 — INR 10,151.40; Delhi C0291 — INR 13,742.60; Hyderabad C0743 — INR 12,730.05; Mumbai C0693 — INR 14,766.55; Pune C0426 — INR 10,377.10.
+- In Q6, eight rows had different `RANK()` and `ROW_NUMBER()` values. Tied spend values receive the same rank under `RANK()` (and `DENSE_RANK()`), while `ROW_NUMBER()` assigns a unique sequential number to every row. `RANK()` can skip a rank after a tie; `DENSE_RANK()` does not.
+- Q7 returned 183 daily rows and its final cumulative revenue was **INR 2,998,668.80**.
+
+### Pandas cross-checks
+
+The Q2 result was independently reshaped with `pandas.pivot_table`, using city as the index, product category as columns, summed revenue as values, and margins enabled.
+
+| City | Dairy | Electronics | Grocery | Personal Care | Snacks | Grand Total |
+|---|---:|---:|---:|---:|---:|---:|
+| Bengaluru | 87,075.05 | 233,909.45 | 110,915.65 | 20,193.85 | 71,549.40 | 523,643.40 |
+| Chennai | 78,301.80 | 195,508.80 | 93,817.45 | 27,675.40 | 68,325.70 | 463,629.15 |
+| Delhi | 117,271.70 | 158,549.10 | 112,658.05 | 23,471.50 | 90,879.45 | 502,829.80 |
+| Hyderabad | 83,731.00 | 228,913.10 | 109,475.40 | 24,800.05 | 81,670.35 | 528,589.90 |
+| Mumbai | 75,209.85 | 214,738.40 | 78,970.15 | 38,018.00 | 72,122.10 | 479,058.50 |
+| Pune | 90,349.55 | 187,629.25 | 108,456.60 | 34,275.15 | 80,207.50 | 500,918.05 |
+| **Grand Total** | **531,938.95** | **1,219,248.10** | **614,293.30** | **168,433.95** | **464,754.50** | **2,998,668.80** |
+
+The pivot-table grand total matches the SQL completed-order revenue exactly.
+
+A separate city-level `groupby` aggregation produced:
+
+| City | Revenue (INR) | Average order amount (INR) | Completed orders |
+|---|---:|---:|---:|
+| Bengaluru | 523,643.40 | 276.47 | 1,894 |
+| Chennai | 463,629.15 | 272.72 | 1,700 |
+| Delhi | 502,829.80 | 243.62 | 2,064 |
+| Hyderabad | 528,589.90 | 284.95 | 1,855 |
+| Mumbai | 479,058.50 | 297.00 | 1,613 |
+| Pune | 500,918.05 | 252.48 | 1,984 |
+
+### Exploratory data analysis (EDA)
+
+The following statistics describe the 11,110 completed-order amounts:
+
+| Statistic | Result |
 |---|---:|
-| Q1 | 30 |
-| Q2 | 30 |
-| Q3 | 11 |
-| Q4 | 25 |
-| Q5 | 550 |
-| Q6 | 1,175 |
-| Q7 | 183 |
+| Mean | INR 269.91 |
+| Median | INR 135.00 |
+| Skewness | 4.61 |
+| First quartile (Q1) | INR 64.80 |
+| Third quartile (Q3) | INR 297.00 |
+| Interquartile range (IQR) | INR 232.20 |
+| Lower IQR fence | INR -283.50 |
+| Upper IQR fence | INR 645.30 |
+| Values below lower fence | 0 |
+| Values above upper fence | 897 |
 
-Selected SQL and pandas cross-checks:
+The correlation matrix for the four numeric order variables was:
 
-- Q2 grand total revenue: INR 2,998,668.80.
-- Bengaluru / Electronics revenue: INR 233,909.45.
-- Q5 average spend: INR 2,552.06.
-- Q6 city-level top-customer examples: Bengaluru C0082 — INR 12,856.20; Chennai C0930 — INR 10,151.40; Delhi C0291 — INR 13,742.60; Hyderabad C0743 — INR 12,730.05; Mumbai C0693 — INR 14,766.55; Pune C0426 — INR 10,377.10.
-- Q6 had 8 rows where `RANK()` differs from `ROW_NUMBER()`.
-- Q7 returned 183 daily rows; final cumulative revenue was INR 2,998,668.80.
-- Pandas pivot-table cross-check: Bengaluru revenue INR 523,643.40, average order amount INR 276.47, count 1,894; Mumbai revenue INR 479,058.50, average order amount INR 297.00, count 1,613.
+| Variable | Order amount | Discount % | Quantity | Delivery minutes |
+|---|---:|---:|---:|---:|
+| Order amount | 1.000 | -0.095 | 0.087 | -0.003 |
+| Discount % | -0.095 | 1.000 | -0.000 | -0.010 |
+| Quantity | 0.087 | -0.000 | 1.000 | -0.013 |
+| Delivery minutes | -0.003 | -0.010 | -0.013 | 1.000 |
 
-### EDA observations
+**EDA interpretation (four required questions)**
 
-For completed-order amounts: mean INR 269.91; median INR 135.00; skewness 4.61; first quartile INR 64.80; third quartile INR 297.00; upper IQR fence INR 645.30. There were 897 values above the upper fence and none below the lower fence.
+1. **What does the data represent?** The dataset contains synthetic Instamart-style customer, product, and order information. This analysis focuses on 11,110 completed orders.
+2. **How is order value distributed?** The mean is INR 269.91 and the median is INR 135.00. Skewness of 4.61 indicates a strongly right-skewed distribution: a smaller number of high-value orders raise the mean above the median.
+3. **Are there outliers or anomalies?** The IQR fences are INR -283.50 and INR 645.30. There are 897 values above the upper fence and none below the lower fence. These high values should be investigated rather than automatically removed.
+4. **What relationships exist?** Order amount has weak negative correlation with discount percentage (-0.095) and weak positive correlation with quantity (+0.087). These correlations do not establish causation.
 
-Correlations were -0.095 between order amount and discount percentage, and +0.087 between order amount and quantity. These are weak correlations in this dataset and should not be interpreted as causal relationships.
+### Part A verification status
+
+- [x] Raw customer, product, and order tables audited.
+- [x] Per-column missing counts and percentages reported.
+- [x] Customer cleaning, city/gender distributions, and age imputation validated.
+- [x] Exact duplicate removal and latest-order-ID deduplication validated.
+- [x] Order amount and completed-order delivery-time imputations validated.
+- [x] Clean CSV files and SQLite tables created.
+- [x] Eight data assertions and SQLite table validation passed.
+- [x] Seven SQL queries executed and selected results cross-checked.
+- [x] Pandas pivot table and city-level aggregations match SQL totals.
+- [x] EDA statistics, IQR outliers, correlation matrix, and four interpretations documented.
 
 ## 6. Part B — Customer Segmentation and Lapse Prediction
 
