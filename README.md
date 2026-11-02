@@ -161,78 +161,215 @@ Correlations were -0.095 between order amount and discount percentage, and +0.08
 
 ### Implemented
 
-- RFM analysis using completed orders and a fixed snapshot date.
-- K-means clustering and silhouette diagnostics.
-- PCA dimensionality reduction.
-- Customer lapse prediction.
-- Logistic Regression and Random Forest comparison.
-- Model pipeline and model persistence.
-- Retention-list generation.
+- RFM analysis using completed orders and a fixed snapshot date (`2025-10-01`).
+- K-means clustering with inertia and silhouette diagnostics for K=2 through K=8.
+- PCA dimensionality reduction and explained variance analysis.
+- Four distinct customer segments with business names and recommended actions.
+- September 2025 customer lapse cohort and historical feature engineering.
+- Logistic Regression and Random Forest model tuning using five-fold GridSearchCV.
+- Training-only preprocessing, including imputation, scaling, and categorical encoding.
+- Training-only random oversampling experiment.
+- Random Forest feature importance and Logistic Regression coefficient analysis.
+- Model persistence and prediction consistency verification.
+- Premium-customer retention-list generation.
+
+### RFM analysis
+
+The RFM snapshot date is `2025-10-01 00:00`. The analysis uses completed orders before the snapshot date.
+
+| RFM statistic | Result |
+|---|---:|
+| Customers | 1,175 |
+| Average recency | 33.56 days |
+| Median recency | 19 days |
+| Minimum recency | 0 days |
+| Maximum recency | 180 days |
+| Average frequency | 9.46 |
+| Maximum frequency | 33 |
+| Average monetary value | INR 2,552.06 |
+| Maximum monetary value | INR 14,766.55 |
 
 ### K-means diagnostics
 
-| K | Silhouette score |
-|---:|---:|
-| 2 | 0.465 |
-| 3 | 0.445 |
-| 4 | 0.526 |
-| 5 | 0.480 |
-| 6 | 0.482 |
-| 7 | 0.416 |
-| 8 | 0.412 |
+K-means was evaluated using StandardScaler-transformed RFM features. Each model used `n_init=10` and `random_state=42`.
 
-K=4 achieved the highest silhouette score (approximately 0.526) and was selected.
+| K | Inertia | Silhouette score |
+|---:|---:|---:|
+| 2 | 1820.76 | 0.465 |
+| 3 | 1268.23 | 0.445 |
+| 4 | 743.07 | 0.526 |
+| 5 | 617.37 | 0.481 |
+| 6 | 503.17 | 0.482 |
+| 7 | 408.46 | 0.416 |
+| 8 | 366.50 | 0.412 |
+
+K=4 was selected because it achieved the highest silhouette score (approximately 0.526) and produced four interpretable customer groups.
+
+Inertia decreases as the number of clusters increases because additional clusters reduce within-cluster distances. Therefore, inertia alone is not sufficient to select K. The silhouette score and business interpretability were also considered.
 
 ### Customer segments
 
-| Segment | Customers |
-|---|---:|
-| Premium | 138 |
-| Frequent | 419 |
-| At Risk | 618 |
-| Total | 1,175 |
+The final RFM analysis contains 1,175 customers across four uniquely named segments.
 
-Cluster profiles:
+| Cluster ID | Business segment | Customers | Average recency | Average frequency | Average monetary value |
+|---:|---|---:|---:|---:|---:|
+| 0 | Occasional | 436 | 28.86 | 3.77 | INR 1,057.62 |
+| 1 | Premium | 138 | 24.12 | 6.77 | INR 7,129.70 |
+| 2 | Frequent | 419 | 8.77 | 19.40 | INR 3,410.02 |
+| 3 | Dormant | 182 | 109.04 | 2.20 | INR 685.99 |
 
-| Cluster | Size | Average recency | Average frequency | Average monetary value |
-|---|---:|---:|---:|---:|
-| 0 | 436 | 28.86 | 3.77 | INR 1,057.62 |
-| 1 | 138 | 24.12 | 6.77 | INR 7,129.70 |
-| 2 | 419 | 8.77 | 19.40 | INR 3,410.02 |
-| 3 | 182 | 109.04 | 2.20 | INR 685.99 |
+Recommended business actions:
 
-The RFM population contains 1,175 customers. PCA explained approximately 85.23% of variance across the first two components (63.43% and 21.80%).
+| Segment | Recommended action |
+|---|---|
+| Occasional | Personalized reorder reminders and cross-selling offers. |
+| Premium | VIP benefits, exclusive offers, and early access. |
+| Frequent | Loyalty rewards, subscription offers, and repeat-purchase incentives. |
+| Dormant | Win-back campaigns and reactivation incentives. |
+
+Premium is assigned to the segment with the highest average monetary value. Cluster IDs are arbitrary labels and do not represent a ranking.
+
+PCA explained approximately 85.23% of the variance across the first two components:
+
+- Principal Component 1: 63.43%.
+- Principal Component 2: 21.80%.
+- Combined explained variance: 85.23%.
 
 ### Lapse model methodology
 
-- The lapse cohort contains 1,156 customers.
-- The lapse label is based on September outcomes.
-- Features use orders strictly before `2025-09-01`.
-- Preprocessing is inside a scikit-learn pipeline fitted on training rows.
-- GridSearchCV is used for model selection.
-- Imputation and scaling are fitted within cross-validation folds to reduce leakage.
-- Baseline accuracy was approximately 0.616.
+The lapse cohort is constructed using customers with completed orders before the cutoff date.
+
+- Historical feature cutoff: `2025-09-01`.
+- Target window: September 1–30, 2025.
+- Lapsed customers: 443.
+- Non-lapsed customers: 713.
+- Total cohort: 1,156.
+- Lapsed percentage: 38.32%.
+- Training rows: 924.
+- Test rows: 232.
+- Training lapsed customers: 354.
+- Test lapsed customers: 89.
+
+The 11 model features are:
+
+`recency`, `frequency`, `monetary`, `avg_discount`, `cancellation_rate`, `avg_delivery`, `age`, `tenure_days`, `favourite_category`, `city`, and `gender`.
+
+The target label is based on September completed-order activity. Feature values use only historical data before September 1, 2025.
+
+Preprocessing is implemented within a scikit-learn pipeline:
+
+- Numeric missing-value imputation and standardisation.
+- Categorical missing-value imputation and one-hot encoding.
+- One-hot encoding uses `drop="first"` and handles unknown categories.
+- GridSearchCV uses five-fold cross-validation and F1 scoring.
+- Preprocessing is fitted within the training and cross-validation process, not on the held-out test set.
+
+The baseline model predicts every test customer as not lapsed. Its accuracy is approximately 61.64%, while its lapsed-class F1 score is zero.
+
+Training-only preprocessing validation:
+
+| Validation | Result |
+|---|---:|
+| Training-only scaler frequency mean | 8.1147 |
+| Full-cohort frequency mean | 8.0285 |
+| Transformed training matrix | 924 × 19 |
+| Transformed test matrix | 232 × 19 |
+| Training matrix NaN/infinity check | Passed |
+| Test matrix NaN/infinity check | Passed |
+
+The scaler, imputer, and encoder were fitted using training data only. The test data was transformed using the fitted preprocessing pipeline without refitting it.
 
 ### Model comparison
 
+Logistic Regression and Random Forest were tuned using GridSearchCV.
+
 | Metric | Logistic Regression | Random Forest |
 |---|---:|---:|
-| Test precision | 0.644 | 0.633 |
-| Test recall | 0.652 | 0.640 |
-| Test F1 | 0.648 | 0.637 |
-| Cross-validation F1 | 0.651 | 0.687 |
+| Best parameters | C=100 | max_depth=8, min_samples_leaf=10 |
+| Cross-validation F1 | 0.6506 | 0.6866 |
+| Test precision | 0.6444 | 0.6333 |
+| Test recall | 0.6517 | 0.6404 |
+| Test F1 | 0.6480 | 0.6369 |
 
-Random Forest was selected because of its higher cross-validation F1, even though Logistic Regression had slightly higher test-set precision, recall, and F1 in this run. Model selection should consider the validation strategy and business objective, not only one test metric.
+Confusion matrices use the order `[[TN, FP], [FN, TP]]`.
 
-Additional details: Logistic Regression best `C` was 100; its confusion matrix was `[[111, 32], [31, 58]]`. Random Forest selected parameters included `max_depth=8` and `min_samples_leaf=10`; its confusion matrix was `[[110, 33], [32, 57]]`. Random Forest cross-validation F1 was approximately 0.687.
+- Logistic Regression: `[[111, 32], [31, 58]]`
+- Random Forest: `[[110, 33], [32, 57]]`
 
-### Leakage and interpretation notes
+Random Forest was selected based on its higher cross-validation F1 score (0.6866), even though Logistic Regression achieved a slightly higher test F1 score. Model selection was based on cross-validation rather than selecting a model solely from held-out test performance.
 
-- The feature cutoff is before `2025-09-01`; September outcomes are used for the label, not as input features.
-- Encoders, imputers, scalers, and other learned preprocessing must be fitted only on training data within the pipeline/cross-validation process.
-- Segment labels must not be used as lapse-model input features.
-- The Premium retention label is calculated over the full RFM window and is post-hoc; it is illustrative and is not a leakage-free model evaluation.
-- The retention list is illustrative and should not be treated as a production targeting model.
+### Training-only random oversampling experiment
+
+Random oversampling was applied only to the Logistic Regression training data. Minority-class lapsed customers were duplicated with replacement using `random_state=42`.
+
+| Training class | Before oversampling | After oversampling |
+|---|---:|---:|
+| Not lapsed (0) | 570 | 570 |
+| Lapsed (1) | 354 | 570 |
+| Total | 924 | 1,140 |
+
+The oversampled Logistic Regression model was evaluated on the original, unchanged test set.
+
+| Metric | Original Logistic Regression | Oversampled Logistic Regression |
+|---|---:|---:|
+| Precision | 0.6444 | 0.5891 |
+| Recall | 0.6517 | 0.8539 |
+| F1 | 0.6480 | 0.6972 |
+
+Oversampling increased recall from 65.17% to 85.39% and F1 from 0.6480 to 0.6972. Precision decreased from 64.44% to 58.91%.
+
+Oversampled confusion matrix: `[[90, 53], [13, 76]]`.
+
+This demonstrates a retention-focused trade-off: more genuinely lapsed customers are identified, but more non-lapsed customers are also flagged.
+
+### Feature importance and coefficient interpretation
+
+The five most important Random Forest features were:
+
+| Rank | Feature | Importance |
+|---:|---|---:|
+| 1 | Monetary | 0.2804 |
+| 2 | Frequency | 0.2779 |
+| 3 | Recency | 0.1091 |
+| 4 | Average delivery | 0.0597 |
+| 5 | Cancellation rate | 0.0518 |
+
+Monetary and frequency together account for approximately 55.83% of the Random Forest feature importance.
+
+The three largest absolute Logistic Regression coefficients were:
+
+| Feature | Coefficient | Direction |
+|---|---:|---|
+| Frequency | -1.6973 | Negative |
+| Electronics category | -1.1352 | Negative |
+| Grocery category | -0.4493 | Negative |
+
+Negative coefficients indicate lower predicted lapse odds, holding other transformed features constant. Categorical coefficients are relative to the reference category omitted by one-hot encoding.
+
+### Retention-list generation
+
+The selected Random Forest model generates a retention list of up to ten Premium customers from the test cohort, ranked by predicted lapse probability.
+
+Validation results:
+
+- Required columns: `customer_id`, `lapse_probability`, `actually_lapsed`.
+- Number of customers: 10.
+- All listed customers belong to the Premium segment.
+- Probabilities are sorted in descending order.
+- Actually lapsed customers in the list: 1.
+
+The saved model was also reloaded, and its predictions were checked against the original model predictions using an equality assertion.
+
+### Leakage safeguards and limitations
+
+- No orders dated September 1, 2025 or later are used to construct lapse-model input features.
+- September activity is used only to generate the lapse target label.
+- Segment labels are not used as lapse-model input features.
+- Imputers, scalers, and encoders are fitted using training data within the model pipeline and cross-validation process.
+- Random oversampling is applied only to training data. The original test set remains unchanged.
+- The Premium retention flag is calculated from whole-window RFM data, which includes the September target period. It is therefore a post-hoc label.
+- Consequently, the Premium retention list is illustrative and is not a leakage-free evaluation of a production retention strategy.
+- The model and retention list use synthetic project data and should not be treated as production customer predictions.
 
 ### Generated outputs
 
@@ -240,20 +377,23 @@ Additional details: Logistic Regression best `C` was 100; its confusion matrix w
 - `outputs/lapse_model.joblib`
 - `outputs/retention_list.csv`
 
-### Remaining Part B verification items
+### Part B verification status
 
-Verify and document these additional checks if required by the grading rubric:
+- [x] RFM calculations and customer population validated.
+- [x] K-means inertia and silhouette diagnostics recorded.
+- [x] Four distinct customer segment names and business actions documented.
+- [x] PCA explained variance recorded.
+- [x] Lapse cohort, target distribution, and train/test split validated.
+- [x] Eleven historical features validated with no missing values in the feature table.
+- [x] Logistic Regression and Random Forest tuning and test evaluation completed.
+- [x] Training-only random oversampling experiment completed.
+- [x] Random Forest top five feature importances recorded.
+- [x] Logistic Regression coefficient signs and interpretation recorded.
+- [x] Model save/reload prediction equality assertion passed.
+- [x] Retention-list schema, Premium membership, sorting, and target labels validated.
+- [x] Record the fitted training-only frequency scaler mean alongside the full-cohort frequency mean.
+- [x] Verify that transformed train and test model matrices contain no missing or non-finite values.
 
-- Training-only random oversampling comparison and its effect on positive-class metrics.
-- Top five Random Forest feature importances and interpretation.
-- Signs and interpretation of selected Logistic Regression coefficients.
-- Save/reload model test with identical predictions.
-- Retention-list columns, sorting, and actual-lapsed label.
-- Training-only scaler statistics compared with the full-cohort mean.
-- No missing values in the final model matrix.
-- Inertia and silhouette explanation.
-
-These are final verification items, not claimed completed results.
 
 ## 7. Part C - Support Ticket Triage and Privacy Guardrails
 
@@ -595,6 +735,8 @@ The seven required scenario records were individually checked against their expe
 - The duplicate-refund check is suitable as a capstone demonstration, but production requires atomic idempotency enforcement.
 - Production work would add authentication, authorization, secure secret management, monitoring, schema contracts, data lineage, model drift checks, access controls, and human approval workflows.
 - Compare outputs with the supplied capstone brief and investigate differences rather than hardcoding expected answers.
+- The Premium retention list uses a whole-window RFM label that includes the target period; it is illustrative and not a leakage-free evaluation.
+- Oversampling increases lapse recall at the cost of lower precision, so retention campaigns require an appropriate review capacity and business threshold.
 
 ## 10. Final Submission Checklist
 
@@ -607,12 +749,16 @@ Use this checklist before submission. Items marked for verification should be ch
 - [x] Pandas cross-checks and EDA completed.
 
 ### Part B
-- [x] RFM segmentation, K-means, and PCA.
-- [x] Lapse model comparison and model selection.
-- [ ] Verify training-only random oversampling comparison if required by the rubric.
-- [ ] Verify top five Random Forest feature importances and Logistic Regression coefficient interpretation.
-- [ ] Verify saved/reloaded model predictions are identical.
-- [ ] Verify retention-list schema and scaler/imputation leakage checks.
+- [x] RFM segmentation, K-means diagnostics, and PCA.
+- [x] Four unique customer segments and business actions.
+- [x] Lapse cohort, historical features, and stratified train/test split.
+- [x] Logistic Regression and Random Forest tuning and evaluation.
+- [x] Training-only oversampling comparison.
+- [x] Feature importance and coefficient interpretation.
+- [x] Model save/reload prediction equality.
+- [x] Retention-list validation.
+- [x] Record the fitted training-only frequency scaler mean alongside the full-cohort frequency mean.
+- [x] Verify that transformed train and test model matrices contain no missing or non-finite values.
 
 ### Part C
 - [x] PII redaction, response validation, retry handling, and routing.
