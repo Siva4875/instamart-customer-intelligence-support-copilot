@@ -534,7 +534,7 @@ def tune_and_evaluate_models(X_train, X_test, y_train, y_test):
             param_grid=parameter_grid,
             cv=5,
             scoring="f1",
-            n_jobs=-1,
+            n_jobs=1,
         )
 
         # Grid search sees training rows only.
