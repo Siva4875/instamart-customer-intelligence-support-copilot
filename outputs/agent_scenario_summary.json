@@ -1,0 +1,124 @@
+[
+  {
+    "scenario_id": "S1",
+    "customer_id": "C0007",
+    "expected_outcome": "REFUND",
+    "actual_outcome": "REFUND",
+    "actual_status": "REFUND",
+    "outcome_match": true,
+    "expected_refund_inr": 128.25,
+    "actual_refund_inr": 128.25,
+    "llm_calls": 5,
+    "tokens_used": 900,
+    "tools_executed": [
+      "get_order",
+      "search_policy",
+      "calculate_refund",
+      "issue_refund"
+    ]
+  },
+  {
+    "scenario_id": "S2",
+    "customer_id": "C0008",
+    "expected_outcome": "REFUND",
+    "actual_outcome": "REFUND",
+    "actual_status": "REFUND",
+    "outcome_match": true,
+    "expected_refund_inr": 135.0,
+    "actual_refund_inr": 135.0,
+    "llm_calls": 5,
+    "tokens_used": 900,
+    "tools_executed": [
+      "get_order",
+      "search_policy",
+      "calculate_refund",
+      "issue_refund"
+    ]
+  },
+  {
+    "scenario_id": "S3",
+    "customer_id": "C0016",
+    "expected_outcome": "ESCALATE",
+    "actual_outcome": "ESCALATE",
+    "actual_status": "ESCALATE",
+    "outcome_match": true,
+    "expected_refund_inr": 1999.0,
+    "actual_refund_inr": 1999.0,
+    "llm_calls": 5,
+    "tokens_used": 887,
+    "tools_executed": [
+      "get_order",
+      "search_policy",
+      "calculate_refund",
+      "escalate_to_human"
+    ]
+  },
+  {
+    "scenario_id": "S4",
+    "customer_id": "C0001",
+    "expected_outcome": "DENIED",
+    "actual_outcome": "DENIED",
+    "actual_status": "DENIED",
+    "outcome_match": true,
+    "expected_refund_inr": 0.0,
+    "actual_refund_inr": 0.0,
+    "llm_calls": 4,
+    "tokens_used": 605,
+    "tools_executed": [
+      "get_order",
+      "search_policy",
+      "calculate_refund"
+    ]
+  },
+  {
+    "scenario_id": "S5",
+    "customer_id": "C0003",
+    "expected_outcome": "DENIED",
+    "actual_outcome": "DENIED",
+    "actual_status": "DENIED",
+    "outcome_match": true,
+    "expected_refund_inr": 0.0,
+    "actual_refund_inr": 0.0,
+    "llm_calls": 3,
+    "tokens_used": 337,
+    "tools_executed": [
+      "get_order",
+      "search_policy"
+    ]
+  },
+  {
+    "scenario_id": "S6",
+    "customer_id": "C0001",
+    "expected_outcome": "NOT_FOUND",
+    "actual_outcome": "NOT_FOUND",
+    "actual_status": "NOT_FOUND",
+    "outcome_match": true,
+    "expected_refund_inr": 0.0,
+    "actual_refund_inr": 0.0,
+    "llm_calls": 2,
+    "tokens_used": 72,
+    "tools_executed": [
+      "get_order"
+    ]
+  },
+  {
+    "scenario_id": "S7",
+    "customer_id": "C0007",
+    "expected_outcome": "FALLBACK",
+    "actual_outcome": "FALLBACK",
+    "actual_status": "FALLBACK_MAX_ITERATIONS",
+    "outcome_match": true,
+    "expected_refund_inr": 0.0,
+    "actual_refund_inr": 0.0,
+    "llm_calls": 6,
+    "tokens_used": 3000,
+    "tools_executed": [
+      "search_policy",
+      "search_policy",
+      "search_policy",
+      "search_policy",
+      "search_policy",
+      "search_policy"
+    ]
+  }
+]

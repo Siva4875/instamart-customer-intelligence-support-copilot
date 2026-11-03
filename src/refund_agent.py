@@ -249,14 +249,18 @@ def _run_loop(run_id, scenario_id, messages, tokens,
 
     start = time.monotonic()
 
-    for _ in range(max_iterations):
-
+    for iteration in range(max_iterations):
         if time.monotonic() - start >= time_limit_seconds:
             return _finish(
-                run_id, scenario_id,
+                run_id,
+                scenario_id,
                 "FALLBACK_TIMEOUT",
                 "FALLBACK_TIMEOUT: hand off to a human agent.",
-                steps, executed, llm_calls, tokens , messages
+                steps,
+                executed,
+                llm_calls,
+                tokens,
+                messages
             )
 
         response = mock_llm.chat(messages, tools=TOOLS_SPEC)
@@ -265,10 +269,15 @@ def _run_loop(run_id, scenario_id, messages, tokens,
 
         if tokens > token_limit:
             return _finish(
-                run_id, scenario_id,
+                run_id,
+                scenario_id,
                 "FALLBACK_TOKEN_LIMIT",
                 "FALLBACK_TOKEN_LIMIT: hand off to a human agent.",
-                steps, executed, llm_calls, tokens, messages
+                steps,
+                executed,
+                llm_calls,
+                tokens,
+                messages
             )
 
         msg = response.choices[0].message
@@ -276,44 +285,51 @@ def _run_loop(run_id, scenario_id, messages, tokens,
         if not msg.tool_calls:
             content = msg.content or ""
             status = content.split(":", 1)[0]
-
             return _finish(
-                run_id, scenario_id, status, content,
-                steps, executed, llm_calls, tokens, messages
+                run_id,
+                scenario_id,
+                status,
+                content,
+                steps,
+                executed,
+                llm_calls,
+                tokens,
+                messages
             )
 
-        tc = msg.tool_calls[0]
-        args = tc.arguments
+        tool_call = msg.tool_calls[0]
+        tool_name = tool_call.name
+        arguments = tool_call.arguments
 
         messages.append({
             "role": "assistant",
             "content": None,
             "tool_calls": [{
-                "id": tc.id,
-                "name": tc.name,
-                "arguments": args
+                "id": tool_call.id,
+                "name": tool_name,
+                "arguments": arguments
             }]
         })
 
-        # Safely handle unknown tool names.
-        if tc.name not in TOOL_MAP:
-            observation = {
-                "error": f"Unknown tool: {tc.name}"     
-            }
-
+        if tool_name not in TOOL_MAP:
+            observation = {"error": f"Unknown tool: {tool_name}"}
             messages.append({
                 "role": "tool",
-                "tool_call_id": tc.id,
-                "name": tc.name,
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
                 "content": json.dumps(observation)
             })
-
             steps.append({
-                "tool": tc.name,
-                "arguments": args,
+                "tool": tool_name,
+                "arguments": arguments,
                 "observation": observation
             })
 
+            # Persist even an invalid-tool observation before handing off.
+            _save_checkpoint(
+                run_id, scenario_id, messages, tokens,
+                steps, executed, llm_calls, len(executed)
+            )
             return _finish(
                 run_id,
                 scenario_id,
@@ -327,52 +343,41 @@ def _run_loop(run_id, scenario_id, messages, tokens,
                 messages
             )
 
-        # Execute the validated tool name.
-        observation = TOOL_MAP[tc.name](**args)
-        executed.append(tc.name)
+        observation = TOOL_MAP[tool_name](**arguments)
+        executed.append(tool_name)
 
-        # Record the tool result in the conversation.
         messages.append({
             "role": "tool",
-            "tool_call_id": tc.id,
-            "name": tc.name,
+            "tool_call_id": tool_call.id,
+            "name": tool_name,
             "content": json.dumps(observation)
         })
-
         steps.append({
-            "tool": tc.name,
-            "arguments": args,
+            "tool": tool_name,
+            "arguments": arguments,
             "observation": observation
         })
 
-        # Stop if the refund was already processed.
-        if observation.get("status") == "ALREADY_PROCESSED":
-            return _finish(
-                run_id,
-                scenario_id,
-                "ALREADY_PROCESSED",
-                "ALREADY_PROCESSED: refund was already processed.",
-                steps,
-                executed,
-                llm_calls,
-                tokens,
-                messages
-            )
+        # Save immediately after EVERY tool observation. This is deliberately
+        # inside the iteration loop so a crash can resume from the last tool.
+        _save_checkpoint(
+            run_id, scenario_id, messages, tokens,
+            steps, executed, llm_calls, len(executed)
+        )
 
-    # Save only after the tool result has been added to the conversation.
-    _save_checkpoint(
-        run_id, scenario_id, messages, tokens,
-        steps, executed, llm_calls, len(executed)
-    )
-
-    if crash_after is not None and len(executed) == crash_after:
-        raise RuntimeError("Simulated crash after checkpoint")
+        if crash_after is not None and len(executed) == crash_after:
+            raise RuntimeError("Simulated crash after checkpoint")
 
     return _finish(
-        run_id, scenario_id,
+        run_id,
+        scenario_id,
         "FALLBACK_MAX_ITERATIONS",
         "FALLBACK_MAX_ITERATIONS: hand off to a human agent.",
-        steps, executed, llm_calls, tokens, messages
+        steps,
+        executed,
+        llm_calls,
+        tokens,
+        messages
     )
 
 

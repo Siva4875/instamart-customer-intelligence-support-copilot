@@ -47,3 +47,15 @@ outputs/duplicate_test.db
 .coverage
 htmlcov/
 
+
+# Local project backups
+backup_before_full_run_*/
+*_backup.py
+*_bak.py
+*_bak.ipynb
+
+# Local project backups
+backup_before_full_run_*/
+*_backup.py
+*_bak.py
+*_bak.ipynb

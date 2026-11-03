@@ -87,7 +87,7 @@ Before committing a regenerated file, review its entries. A package installed fr
 
 Open `notebooks/Customer_Intelligence_Support_Copilot.ipynb` and run cells from top to bottom for the notebook workflow. The notebook calls the same modules used by the scripts.
 
-The main pipeline runs Parts A, B, C, and policy RAG evaluation. Refund-agent scenarios and safety demonstrations are separate Part D validation steps.
+The `python run_project.py` command runs Parts A, B, C, and D, including policy RAG evaluation, all seven refund-agent scenarios, and the token-limit and timeout demonstrations.
 
 ## 3. Repository Structure
 
@@ -818,9 +818,9 @@ All seven predefined scenarios now have completed records in `outputs/agent_runs
 
 | Scenario | Expected outcome | Actual outcome | LLM calls | Tokens | Result |
 |---|---|---|---:|---:|---|
-| S1 | REFUND | REFUND | 5 | 897 | PASS |
-| S2 | REFUND | REFUND | 5 | 897 | PASS |
-| S3 | ESCALATE | ESCALATE | 5 | 884 | PASS |
+| S1 | REFUND | REFUND | 5 | 900 | PASS |
+| S2 | REFUND | REFUND | 5 | 900 | PASS |
+| S3 | ESCALATE | ESCALATE | 5 | 887 | PASS |
 | S4 | DENIED | DENIED | 4 | 605 | PASS |
 | S5 | DENIED | DENIED | 3 | 337 | PASS |
 | S6 | NOT_FOUND | NOT_FOUND | 2 | 72 | PASS |
@@ -830,7 +830,7 @@ Scenario coverage: S1 and S2 are eligible late-delivery refunds; S3 is a high-va
 
 S7 reached the six-iteration limit with six model calls and 3,000 tokens, below the configured 6,000-token limit.
 
-The completed S2-S6 results were recovered from their saved checkpoints. Existing refund and escalation actions were not repeated during recovery. S7 was finalized from its six saved tool observations without another model call or tool execution.
+In the latest complete pipeline run, S1 simulated a crash after the second tool observation and resumed from its checkpoint. S1-S7 then matched all expected outcomes. S7 reached the six-iteration limit and returned `FALLBACK_MAX_ITERATIONS`.
 
 ### Stop-safely demonstrations
 
@@ -854,13 +854,14 @@ A crash/resume test completed successfully:
 - Refund amount: INR 360.
 - One refund ledger entry was recorded for the test order.
 
-A later S1 crash/resume verification also completed successfully:
+The latest S1 crash/resume verification from the complete pipeline also completed successfully:
 
-- Run ID: `S1_CRASH_RESUME_FINAL`.
+- Run ID: `S1_CRASH_RESUME_SAFE_20261103`.
+- Simulated crash after the second tool observation; the checkpoint was then resumed.
 - Final status: `REFUND`.
 - Refund amount: INR 128.25.
-- Four tools executed once each.
-- Five LLM calls and 897 tokens were recorded.
+- Tools executed in order: `get_order`, `search_policy`, `calculate_refund`, `issue_refund`.
+- Five LLM calls and 900 tokens were recorded.
 - The checkpoint was marked completed.
 
 ### Duplicate-refund integration test
@@ -892,40 +893,30 @@ A second duplicate-refund checkpoint verification was performed using the same s
 Both tests confirmed that an existing refund was detected without creating another ledger entry.
 
 ## Audit-log limitation:
-The second test reused an existing run ID. The checkpoint was updated with the successful result, but the audit log retained the earlier `FALLBACK_INVALID_TOOL` record because `_finish()` does not overwrite an existing run ID. The successful result was verified directly from the checkpoint's `result` field.
+The JSONL audit log is append-oriented and can contain multiple runs for the same scenario, including earlier tests and repeat verifications. A historical run ID was reused during an earlier duplicate-refund checkpoint test; its audit entry retained an older status even though the completed checkpoint contained the later result. For this reason, use `outputs/agent_scenario_summary.json` as the authoritative summary of the latest seven-scenario pipeline run, and use the JSONL file as the run history.
 
 ## Production limitation:
 The current JSONL ledger check is a local simulation and is not sufficient for concurrent production transactions. A production implementation should use a database transaction, a unique idempotency key or constraint, and appropriate atomicity and human-approval controls.
 
 #### Current agent audit log
 
-The latest verified `outputs/agent_runs.jsonl` contains 14 records: seven required scenario records and seven additional test or safety-demonstration records.
+The latest verification found **27 records** in `outputs/agent_runs.jsonl`. This file is a run-history log and includes the required scenario executions, repeat S1 crash/resume verification, earlier tests, and safety demonstrations. It is therefore expected to contain more records than the seven required scenarios.
 
-**Required scenario records**
+The latest `outputs/agent_scenario_summary.json` is the authoritative summary for the complete pipeline run:
 
-| Run ID | Scenario | Status | LLM calls | Tokens |
-|---|---|---|---:|---:|
-| `S1_CRASH_RESUME_FINAL` | S1 | REFUND | 5 | 897 |
-| `fd879416-3d65-48da-adf1-ce9c2ec836da` | S2 | REFUND | 5 | 897 |
-| `1687cbab-c379-4daa-bab7-e979e2abf1ee` | S3 | ESCALATE | 5 | 884 |
-| `3d2bd12c-21d1-4046-8b0f-94a4f3b53750` | S4 | DENIED | 4 | 605 |
-| `e004d340-2bdb-4e23-9739-889ff053d2d6` | S5 | DENIED | 3 | 337 |
-| `0f0ccd51-07a6-40f3-87a6-6e46b631c276` | S6 | NOT_FOUND | 2 | 72 |
-| `32491f66-80fa-44e7-b5ac-1500f117c32d` | S7 | FALLBACK_MAX_ITERATIONS | 6 | 3000 |
+| Scenario | Expected outcome | Actual outcome | Model calls | Tokens | Refund / escalation amount (INR) | Match |
+|---|---|---|---:|---:|---:|---|
+| S1 | REFUND | REFUND | 5 | 900 | 128.25 | PASS |
+| S2 | REFUND | REFUND | 5 | 900 | 135.00 | PASS |
+| S3 | ESCALATE | ESCALATE | 5 | 887 | 1,999.00 | PASS |
+| S4 | DENIED | DENIED | 4 | 605 | 0.00 | PASS |
+| S5 | DENIED | DENIED | 3 | 337 | 0.00 | PASS |
+| S6 | NOT_FOUND | NOT_FOUND | 2 | 72 | 0.00 | PASS |
+| S7 | FALLBACK | FALLBACK_MAX_ITERATIONS | 6 | 3,000 | 0.00 | PASS |
 
-**Additional test and safety records**
+All seven `outcome_match` values are `True`. The standalone S1 crash/resume verification is an additional S1 run, not an eighth required scenario.
 
-| Run ID | Scenario | Recorded status | LLM calls | Tokens |
-|---|---|---|---:|---:|
-| `CRASH_RESUME_TEST_001` | CRASH_RESUME_TEST | REFUND | 5 | 867 |
-| `S1_TOKEN_LIMIT_200` | S1_TOKEN_LIMIT | FALLBACK_TOKEN_LIMIT | 3 | 354 |
-| `S1_TOKEN_LIMIT_VERIFY` | S1_TOKEN_LIMIT | FALLBACK_TOKEN_LIMIT | 3 | 354 |
-| `S1_TIMEOUT_ZERO` | S1_TIMEOUT | FALLBACK_TIMEOUT | 0 | 0 |
-| `DUPLICATE_REFUND_INTEGRATION_001` | DUPLICATE_REFUND_INTEGRATION | ALREADY_PROCESSED | 4 | 597 |
-| `UNKNOWN_TOOL_SAFETY_TEST_001` | UNKNOWN_TOOL_SAFETY_TEST | FALLBACK_INVALID_TOOL | 1 | 10 |
-| `DUPLICATE_REFUND_CHECKPOINT_TEST_001` | DUPLICATE_REFUND_CHECKPOINT_TEST | FALLBACK_INVALID_TOOL (stale audit entry) | 1 | 33 |
-
-The seven required scenario records were individually checked against their expected outcomes. The duplicate-refund checkpoint test's audit entry remains stale because `_finish()` does not overwrite an existing run ID; its completed checkpoint records `ALREADY_PROCESSED`. This historical discrepancy is retained transparently.
+During the complete pipeline execution, `outputs/refund_ledger.jsonl` remained at **8 lines**, the same count recorded before the run. The repeated scenario execution did not append additional refund-ledger entries for the already-recorded tool/order combinations.
 
 ## 9. Limitations and Future Improvements
 
@@ -966,8 +957,8 @@ Use this checklist before submission. Items marked for verification should be ch
 - [x] PII redaction, response validation, retry handling, and routing.
 - [x] Normal triage run and routing counts recorded.
 - [x] Zero-shot and few-shot comparison recorded.
-- [ ] Run and verify the final zero-shot token-budget demonstration with the required budget.
-- [ ] Confirm no PII remains in redacted prompts and empty/overlong tickets are not sent to the model.
+- [x] Run and verify the zero-shot token-budget demonstration with the 6,000-token budget; the run used 6,018 tokens because a call already in progress crossed the limit, and later calls were stopped.
+- [x] Verify PII redaction and input guardrails; empty and overlong tickets are excluded from model calls.
 
 ### Part D
 - [x] Policy RAG evaluation and chunk-overlap experiment.
