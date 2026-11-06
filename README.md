@@ -972,25 +972,6 @@ Use this checklist before submission. Items marked for verification should be ch
 - [x] Checkpoint contains all four tool observations.
 - [x] Audit log updated and verified for all seven required scenarios.
 
-### Repository and documentation
-- [ ] Confirm README commands work from a clean environment.
-- [ ] Confirm `requirements.txt` includes all required dependencies.
-- [ ] Confirm generated data and scenario CSVs can be reproduced from a clean clone.
-- [ ] Review `.gitignore` and ensure virtual environments, secrets, caches, and private runtime state are not committed.
-- [ ] Review `git status` before staging and committing.
-- [ ] Compare the final repository with the capstone rubric before submission.
-
-## 11. Technical References
-
-The following official repositories and documentation provide technical references for the tools and methods used in this project. Adapt relevant patterns to the project and cite sources where appropriate.
-
-- pandas: https://github.com/pandas-dev/pandas — CSV loading, cleaning, groupby, and pivot tables.
-- scikit-learn: https://github.com/scikit-learn/scikit-learn — pipelines, preprocessing, clustering, model selection, metrics, and TF-IDF.
-- Python tutorial: https://github.com/python/cpython/tree/main/Doc/tutorial — Python fundamentals.
-- Jupyter Notebook: https://github.com/jupyter/notebook — notebook workflow.
-- SQLite: https://github.com/sqlite/sqlite — SQL database engine (official mirror).
-- scikit-learn text feature extraction: https://scikit-learn.org/stable/modules/feature_extraction.html#text-feature-extraction.
-
 ## Project Conclusion
 
 The project brings together an end-to-end workflow covering synthetic data preparation, SQL and pandas analysis, customer segmentation, lapse prediction, privacy-aware ticket triage, policy retrieval, and a bounded refund agent. Its experiments demonstrate the importance of data quality, leakage-aware evaluation, context-preserving retrieval, safe agent execution, auditability, and the limitations to address when adapting a local simulation for production use.
