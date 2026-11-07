@@ -404,9 +404,27 @@ def build_lapse_cohort(customers, orders):
 # ============================================================================
 
 def split_lapse_data(cohort):
-    """Create the required stratified 80/20 split."""
+    """Validate model inputs and create the required stratified 80/20 split."""
+    missing_features = [
+        feature for feature in LAPSE_FEATURES
+        if feature not in cohort.columns
+    ]
+    if missing_features:
+        raise ValueError(
+            "Lapse cohort is missing required predictor features: "
+            + ", ".join(missing_features)
+        )
+
+    if "lapsed" not in cohort.columns:
+        raise ValueError("Lapse cohort is missing the target column 'lapsed'.")
+
     X = cohort[LAPSE_FEATURES].copy()
     y = cohort["lapsed"].copy()
+
+    if X.empty or y.nunique() != 2:
+        raise ValueError(
+            "Lapse modelling requires a non-empty cohort with both target classes."
+        )
 
     return train_test_split(
         X,
@@ -486,6 +504,30 @@ def get_model_configurations():
     ]
 
 
+def preprocessing_diagnostics(fitted_search):
+    """Return training-fitted imputation and scaling statistics."""
+    preprocessor = fitted_search.best_estimator_.named_steps["prep"]
+    numeric_pipeline = preprocessor.named_transformers_["num"]
+    imputer = numeric_pipeline.named_steps["imputer"]
+    scaler = numeric_pipeline.named_steps["scaler"]
+
+    return {
+        "numeric_features": list(NUMERIC_FEATURES),
+        "training_median_imputation_values": {
+            feature: float(value)
+            for feature, value in zip(NUMERIC_FEATURES, imputer.statistics_)
+        },
+        "training_scaler_means": {
+            feature: float(value)
+            for feature, value in zip(NUMERIC_FEATURES, scaler.mean_)
+        },
+        "training_scaler_scales": {
+            feature: float(value)
+            for feature, value in zip(NUMERIC_FEATURES, scaler.scale_)
+        },
+    }
+
+
 def evaluate_model(search, X_test, y_test):
     """Calculate positive-class metrics and confusion matrix on the test set."""
     predictions = search.predict(X_test)
@@ -493,6 +535,7 @@ def evaluate_model(search, X_test, y_test):
     return {
         "best_params": search.best_params_,
         "cv_f1": search.best_score_,
+        "preprocessing_diagnostics": preprocessing_diagnostics(search),
         "precision": precision_score(
             y_test,
             predictions,
@@ -856,14 +899,33 @@ def build_lapse_model():
         len(y_test),
         dtype=int,
     )
+    baseline_metrics = {
+        "accuracy": accuracy_score(y_test, baseline_predictions),
+        "precision": precision_score(
+            y_test, baseline_predictions, zero_division=0
+        ),
+        "recall": recall_score(
+            y_test, baseline_predictions, zero_division=0
+        ),
+        "f1": f1_score(
+            y_test, baseline_predictions, zero_division=0
+        ),
+        "confusion_matrix": confusion_matrix(
+            y_test, baseline_predictions
+        ).tolist(),
+    }
+
+    selected_f1 = model_results["forest"]["f1"]
+    if selected_f1 < 0.55:
+        raise AssertionError(
+            f"Selected Random Forest test F1 {selected_f1:.4f} is below 0.55."
+        )
 
     return {
         "cohort_rows": len(cohort),
         "lapsed": int(cohort["lapsed"].sum()),
-        "baseline_accuracy": accuracy_score(
-            y_test,
-            baseline_predictions,
-        ),
+        "baseline_accuracy": baseline_metrics["accuracy"],
+        "baseline_metrics": baseline_metrics,
         "models": reportable_models,
         "oversampling": oversampling_results,
         "feature_insights": feature_insights,

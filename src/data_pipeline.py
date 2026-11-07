@@ -174,23 +174,20 @@ def clean_data():
     )
     completed = orders.status.eq("completed")
 
-    # Retained from the original implementation.
-    med = (
+    # Impute missing delivery times only for completed orders. The category
+    # median is calculated from completed orders and broadcast back to each
+    # completed row with groupby().transform(), preserving row alignment.
+    completed_delivery = orders.loc[completed, "delivery_minutes"]
+    category_medians = (
         orders.loc[completed]
-        .groupby("category")
-        .delivery_minutes.transform("median")
+        .groupby("category")["delivery_minutes"]
+        .transform("median")
+    )
+    orders.loc[completed, "delivery_minutes"] = (
+        completed_delivery.fillna(category_medians)
     )
 
-    # Category medians mapped to all completed rows, including missing values.
-    cat_median = (
-        orders.loc[completed]
-        .groupby("category")
-        .delivery_minutes.median()
-    )
-    fillmask = completed & orders.delivery_minutes.isna()
-    orders.loc[fillmask, "delivery_minutes"] = (
-        orders.loc[fillmask, "category"].map(cat_median)
-    )
+    # Cancelled orders remain missing: no delivery took place.
 
     orders["delivery_minutes"] = (
         orders.delivery_minutes.round().astype("Int64")
