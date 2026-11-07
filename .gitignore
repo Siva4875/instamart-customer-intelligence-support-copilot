@@ -59,3 +59,6 @@ backup_before_full_run_*/
 *_backup.py
 *_bak.py
 *_bak.ipynb
+
+# Duplicate local notebook data
+notebooks/data/
