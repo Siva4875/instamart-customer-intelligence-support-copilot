@@ -1,0 +1,30 @@
+{
+  "run_id": "TIMEOUT_SAFE_TEST",
+  "scenario_id": "TIMEOUT_TEST",
+  "messages": [
+    {
+      "role": "system",
+      "content": "AGENT: Use tools to verify orders and follow refund policy."
+    },
+    {
+      "role": "user",
+      "content": "My order ORD-100048 reached me very late. I would like a refund."
+    }
+  ],
+  "tokens_used": 0,
+  "step_number": 0,
+  "tools_executed": [],
+  "steps": [],
+  "llm_calls": 0,
+  "completed": true,
+  "result": {
+    "run_id": "TIMEOUT_SAFE_TEST",
+    "scenario_id": "TIMEOUT_TEST",
+    "status": "FALLBACK_TIMEOUT",
+    "final_answer": "FALLBACK_TIMEOUT: hand off to a human agent.",
+    "steps": [],
+    "tools_executed": [],
+    "llm_calls": 0,
+    "tokens_used": 0
+  }
+}

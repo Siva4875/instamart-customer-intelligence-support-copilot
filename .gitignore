@@ -26,7 +26,6 @@ Thumbs.db
 Desktop.ini
 
 # Local database
-data/instamart.db
 
 # Temporary files and logs
 *.log
@@ -62,3 +61,9 @@ backup_before_full_run_*/
 
 # Duplicate local notebook data
 notebooks/data/
+
+# Selected Part D checkpoint evidence
+!state/S1_CRASH_RESUME_SAFE_20261103.json
+!state/S7_LOOP_SAFE_TEST.json
+!state/TOKEN_LIMIT_SAFE_TEST.json
+!state/TIMEOUT_SAFE_TEST.json

@@ -945,7 +945,7 @@ The current JSONL ledger check is a local simulation and is not sufficient for c
 
 #### Current agent audit log
 
-The latest verification found **27 records** in `outputs/agent_runs.jsonl`. This file is a run-history log and includes the required scenario executions, repeat S1 crash/resume verification, earlier tests, and safety demonstrations. It is therefore expected to contain more records than the seven required scenarios.
+The latest verification found **135 records** in `outputs/agent_runs.jsonl`. This file is a run-history log and includes the required scenario executions, repeat S1 crash/resume verification, earlier tests, and safety demonstrations. It is therefore expected to contain more records than the seven required scenarios.
 
 The latest `outputs/agent_scenario_summary.json` is the authoritative summary for the complete pipeline run:
 
