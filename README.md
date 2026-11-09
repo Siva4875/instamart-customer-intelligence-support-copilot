@@ -79,8 +79,8 @@ The `python run_project.py` command runs Parts A, B, C, and D, including policy 
 
 | Path | Purpose |
 |---|---|
-| `generate_data.py` | Supplied deterministic synthetic-data and policy-document generator (kept unchanged). |
-| `mock_llm.py` | Supplied offline stand-in for classification, policy answers, and agent tool calls (kept unmodified). |
+| `generate_data.py` | Deterministic synthetic-data and policy-document generator, updated to generate Part D agent scenarios. |
+| `mock_llm.py` | Offline stand-in for classification, policy answers, and agent tool calls, reviewed and retained with updates. |
 | `requirements.txt` | Reproducible Python dependency pins. |
 | `.gitignore` | Excludes secrets, virtual environments, Python caches, and generated local artifacts as configured. |
 | `README.md` | Project overview, reproduction commands, Parts A–D results, limitations, and next steps. |
@@ -117,7 +117,7 @@ The reproducible pipeline generates the following files and folders required by 
 | `outputs/refund_ledger.jsonl` | Part D | Issued-refund and escalation action history. |
 | `state/` | Part D | Agent checkpoint files used for resume demonstrations. |
 
-The repository root also contains the two supplied files (`generate_data.py` and unmodified `mock_llm.py`), `requirements.txt`, `.gitignore`, all Part A–D source code, and this single `README.md`. `outputs/agent_scenario_summary.json` is an additional convenience summary used to identify the latest seven-scenario run; it does not replace the required JSONL run history.
+The repository root also contains `generate_data.py` and `mock_llm.py`, `requirements.txt`, `.gitignore`, all Part A–D source code, and this single `README.md`. `outputs/agent_scenario_summary.json` is an additional convenience summary used to identify the latest seven-scenario run; it does not replace the required JSONL run history.
 
 
 ### Data and Quality Workflow
