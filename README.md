@@ -841,23 +841,13 @@ The implementation defines five entries in `TOOLS_SPEC` and maps their names to 
 
 ### ReAct vs Plan-and-Execute
 
-This project uses **ReAct (Reasoning and Acting)** for the refund and customer-support agent.
+**ReAct** alternates between model reasoning, tool execution, and observation. In this project, S1 required 5 model calls and 900 tokens, S5 required 3 calls and 337 tokens, and S6 required 2 calls and 72 tokens. The number of calls varies according to the actual tool results.
 
-**ReAct approach**
-- The agent alternates between reasoning, selecting a tool, observing its result, and deciding the next action.
-- It retrieves order details, searches refund policies, calculates the eligible refund, and then issues a refund or escalates the case.
-- Tool execution is checkpointed, allowing the agent to resume after an interruption.
-- Decisions can adapt to actual tool responses.
+**Plan-and-Execute** would ask the model to produce an ordered plan first, execute predictable steps, and request a new plan only when an unexpected result occurs. This could reduce model calls for routine cases, although the initial planning response may use more tokens. No Plan-and-Execute benchmark was run, so its token usage is not presented as a measured result.
 
-**Plan-and-Execute approach**
-- The agent first creates a complete plan containing the required steps.
-- A separate execution phase follows that plan.
-- It is useful for complex workflows with predictable steps and multiple dependent tasks.
-- Unexpected results may require the original plan to be revised.
+ReAct handles unexpected observations such as `NOT_FOUND` or a cancelled order by using the actual tool response to decide the next action. A fixed plan must explicitly validate each observation and stop or replan when necessary.
 
-**Measured ReAct cost and design comparison**
-
-The completed runs measured five model calls and 900 tokens for S1 (refund), three calls and 337 tokens for S5 (denial), and two calls and 72 tokens for S6 (order not found). ReAct therefore uses a variable number of calls because it observes each tool result before deciding what to do next. A plan-and-execute design could ask the model once for an ordered plan, execute the predictable tool steps locally, and request a re-plan only when an observation invalidates the plan; this may reduce calls for routine cases, although the initial plan can be longer. No plan-and-execute implementation or benchmark was run in this project, so its token use is not reported as a measured result. ReAct handles an unexpected `NOT_FOUND` response or a cancelled order naturally because the next decision is made after the actual observation; a fixed plan must explicitly validate each observation and stop or re-plan rather than continue blindly. ReAct was selected for this refund workflow because order status and policy eligibility must be checked before money is recorded, and the measured multi-call cost is controlled by iteration, token, time, checkpoint, and duplicate-action safeguards.
+ReAct was selected because refund decisions depend on verified order status, delivery time, and policy eligibility. Its additional model calls are controlled through iteration, token, timeout, checkpoint, and duplicate-action safeguards.
 
 ### Seven refund-agent scenarios
 
@@ -881,12 +871,12 @@ In the latest complete pipeline run, S1 simulated a crash after the second tool 
 
 ### Stop-safely demonstrations
 
-| Test | Result |
-|---|---|
-| Token limit | `FALLBACK_TOKEN_LIMIT` |
-| Time limit | `FALLBACK_TIMEOUT` |
+| Test | Parameter | Result |
+|---|---|---|
+| Token limit | `token_limit=200` | `FALLBACK_TOKEN_LIMIT` |
+| Time limit | `time_limit_seconds=0` | `FALLBACK_TIMEOUT` |
 
-The token-limit demonstration stopped before executing the refund-calculation tool. The zero-timeout demonstration returned a timeout fallback without executing tools.
+The token-limit demonstration stopped before executing the refund-calculation tool. The zero-timeout demonstration returned a timeout fallback without executing tools. These demonstrations verify that the agent stops safely when its configured token or time budget is exhausted.
 
 ### Crash-and-resume demonstrations
 
@@ -947,7 +937,7 @@ The current JSONL ledger check is a local simulation and is not sufficient for c
 
 #### Current agent audit log
 
-The latest verification found **135 records** in `outputs/agent_runs.jsonl`. This file is a run-history log and includes the required scenario executions, repeat S1 crash/resume verification, earlier tests, and safety demonstrations. It is therefore expected to contain more records than the seven required scenarios.
+The latest verification found **153 records** in `outputs/agent_runs.jsonl`. This file is a run-history log and includes the required scenario executions, repeat S1 crash/resume verification, earlier tests, and safety demonstrations. It is therefore expected to contain more records than the seven required scenarios.
 
 The latest `outputs/agent_scenario_summary.json` is the authoritative summary for the complete pipeline run:
 
