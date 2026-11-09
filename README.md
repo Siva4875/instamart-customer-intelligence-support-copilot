@@ -443,6 +443,8 @@ K-means was evaluated using StandardScaler-transformed RFM features. Each model 
 
 K=4 was selected because it achieved the highest silhouette score (approximately 0.526) and produced four interpretable customer groups.
 
+The elbow is also around K=4: inertia drops substantially from K=3 (1268.23) to K=4 (743.07), while the reductions after K=4 are much smaller. This suggests diminishing returns from adding more clusters, supporting K=4 as a practical balance between clustering quality and business interpretability.
+
 Inertia decreases as the number of clusters increases because additional clusters reduce within-cluster distances. Therefore, inertia alone is not sufficient to select K. The silhouette score and business interpretability were also considered.
 
 ### Customer segments
@@ -606,8 +608,8 @@ The saved model was also reloaded, and its predictions were checked against the 
 - No orders dated September 1, 2025 or later are used to construct lapse-model input features.
 - September activity is used only to generate the lapse target label.
 - Segment labels are not used as lapse-model input features.
-- Imputers, scalers, and encoders are fitted using training data within the model pipeline and cross-validation process.
-- Random oversampling is applied only to training data. The original test set remains unchanged.
+- Imputers, scalers, and encoders are fitted using training rows only within the model pipeline and cross-validation process. The fitted preprocessing pipeline transforms validation and test rows without refitting.
+- No encoder or scaler is fitted on test rows, and no resampler is applied to test rows. Random oversampling is restricted to training data, and the original test set remains unchanged.
 - The Premium retention flag is calculated from whole-window RFM data, which includes the September target period. It is therefore a post-hoc label.
 - Consequently, the Premium retention list is illustrative and is not a leakage-free evaluation of a production retention strategy.
 - The model and retention list use synthetic project data and should not be treated as production customer predictions.

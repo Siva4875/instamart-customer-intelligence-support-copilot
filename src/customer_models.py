@@ -421,6 +421,21 @@ def split_lapse_data(cohort):
     X = cohort[LAPSE_FEATURES].copy()
     y = cohort["lapsed"].copy()
 
+    # Confirm that every predictor feature is free of missing values.
+    missing_value_counts = X.isna().sum()
+    missing_value_counts = missing_value_counts[
+        missing_value_counts > 0
+    ]
+
+    if not missing_value_counts.empty:
+        raise ValueError(
+            "Lapse predictor features contain missing values: "
+            + ", ".join(
+                f"{feature} ({count})"
+                for feature, count in missing_value_counts.items()
+            )
+        )
+
     if X.empty or y.nunique() != 2:
         raise ValueError(
             "Lapse modelling requires a non-empty cohort with both target classes."
@@ -863,6 +878,30 @@ def build_lapse_model():
     model_path = save_and_verify_model(
         selected_model,
         X_test,
+    )
+
+    # Compare the training-fitted scaler mean with the full-cohort mean.
+    fitted_preprocessor = selected_model.best_estimator_.named_steps["prep"]
+
+    fitted_scaler = (
+        fitted_preprocessor
+        .named_transformers_["num"]
+        .named_steps["scaler"]
+    )
+
+    frequency_index = NUMERIC_FEATURES.index("frequency")
+
+    training_frequency_mean = fitted_scaler.mean_[frequency_index]
+    full_cohort_frequency_mean = cohort["frequency"].mean()
+
+    print("\n=== FREQUENCY SCALER MEAN COMPARISON ===")
+    print(
+        f"Training-fitted scaler mean: "
+        f"{training_frequency_mean:.4f}"
+    )
+    print(
+        f"Full-cohort frequency mean: "
+        f"{full_cohort_frequency_mean:.4f}"
     )
 
     # Map test rows back to their customer IDs using the original cohort index.
