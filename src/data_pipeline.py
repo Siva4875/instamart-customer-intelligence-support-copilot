@@ -224,42 +224,110 @@ def clean_data():
 # Data and database validation
 # ---------------------------------------------------------------------------
 
+
 def validate():
-    """Run the eight data assertions and verify the required SQLite tables."""
+    """Assert the Part A reference checkpoints and verify SQLite tables."""
     customers = pd.read_csv(CLEAN / "customers.csv")
     orders = pd.read_csv(CLEAN / "orders.csv", keep_default_na=False)
 
-    # Customer standardization and age-range checks.
-    assert customers.city.nunique() == 6
-    assert set(customers.gender.unique()) <= {"male", "female", "unknown"}
-    assert customers.age.notna().all() and customers.age.between(18, 60).all()
+    # ---------------------------------------------------------------
+    # Customer reference checkpoints
+    # ---------------------------------------------------------------
 
-    # Order key, status, amount, and delivery-time checks.
+    expected_city_counts = {
+        "Pune": 227,
+        "Delhi": 210,
+        "Bengaluru": 197,
+        "Chennai": 191,
+        "Hyderabad": 191,
+        "Mumbai": 184,
+    }
+
+    expected_gender_counts = {
+        "female": 610,
+        "male": 560,
+        "unknown": 30,
+    }
+
+    assert len(customers) == 1200
+    assert customers.city.value_counts().to_dict() == expected_city_counts
+    assert customers.gender.value_counts().to_dict() == expected_gender_counts
+    assert customers.age.notna().all()
+    assert customers.age.between(18, 60).all()
+
+    # ---------------------------------------------------------------
+    # Order reference checkpoints
+    # ---------------------------------------------------------------
+
+    assert len(orders) == 12309
     assert orders.order_id.is_unique
+
+    expected_status_counts = {
+        "completed": 11110,
+        "cancelled": 1199,
+    }
+
+    assert orders.status.value_counts().to_dict() == expected_status_counts
     assert not orders.status.eq("pending").any()
-    assert pd.to_numeric(orders.order_amount, errors="coerce").notna().all()
+
+    order_amount = pd.to_numeric(
+        orders["order_amount"], errors="coerce"
+    )
+    assert order_amount.notna().all()
+
+    completed = orders.status.eq("completed")
+    cancelled = orders.status.eq("cancelled")
 
     completed_delivery = pd.to_numeric(
-        orders.loc[orders.status.eq("completed"), "delivery_minutes"],
+        orders.loc[completed, "delivery_minutes"],
         errors="coerce",
     )
-    assert completed_delivery.notna().all()
-
     cancelled_delivery = pd.to_numeric(
-        orders.loc[orders.status.eq("cancelled"), "delivery_minutes"],
+        orders.loc[cancelled, "delivery_minutes"],
         errors="coerce",
     )
-    assert cancelled_delivery.isna().all()
 
-    # Confirm that all three cleaned tables were created in SQLite.
+    assert completed_delivery.notna().all()
+    assert completed_delivery.isna().sum() == 0
+    assert cancelled_delivery.isna().all()
+    assert cancelled_delivery.isna().sum() == 1199
+
+    completed_revenue = order_amount.loc[completed].sum()
+    assert np.isclose(
+        completed_revenue,
+        2998668.80,
+        atol=0.01,
+    )
+
+    # ---------------------------------------------------------------
+    # SQLite table and row-count checkpoints
+    # ---------------------------------------------------------------
+
+    expected_table_counts = {
+        "customers": 1200,
+        "products": 40,
+        "orders": 12309,
+    }
+
     with sqlite3.connect(DB) as connection:
         table_names = {
             row[0]
             for row in connection.execute(
-                "select name from sqlite_master where type='table'"
+                "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-        assert {"customers", "products", "orders"} <= table_names
+
+        assert set(expected_table_counts) <= table_names
+
+        for table_name, expected_count in expected_table_counts.items():
+            actual_count = connection.execute(
+                f'SELECT COUNT(*) FROM "{table_name}"'
+            ).fetchone()[0]
+
+            assert actual_count == expected_count, (
+                f"{table_name}: expected {expected_count} rows, "
+                f"found {actual_count}"
+            )
 
     print("ALL CHECKPOINTS PASSED")
 
